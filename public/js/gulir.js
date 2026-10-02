@@ -4,52 +4,81 @@
 import { $ } from './util.js';
 
 const sudahTercatat = new Set();
+const sudahDiamati = new WeakSet();
+let pengamat = null;
+let menunggu = false;
 
-export function periksaGulir() {
-  const kepala = $('#kepala');
-  const bar = $('#bar-gulir');
-  const keAtas = $('#ke-atas');
-
+// Bagian ringan: hanya dijalankan paling banyak sekali per frame.
+function perbaruiKepala() {
+  menunggu = false;
   const y = window.scrollY;
-  kepala.classList.toggle('melayang', y > 8);
-  keAtas.hidden = y < 900;
+  $('#kepala').classList.toggle('melayang', y > 8);
+  $('#ke-atas').hidden = y < 900;
 
   const tinggiDokumen = document.documentElement.scrollHeight - window.innerHeight;
-  bar.style.width = (tinggiDokumen > 0 ? (y / tinggiDokumen) * 100 : 0) + '%';
+  $('#bar-gulir').style.width = (tinggiDokumen > 0 ? (y / tinggiDokumen) * 100 : 0) + '%';
+}
 
-  // Kartu yang masuk layar dimunculkan dengan animasi, dan dicatat sebagai impresi.
-  const tinggiLayar = window.innerHeight;
-  const impresiBaru = [];
-  document.querySelectorAll('.kartu').forEach((kartu) => {
-    const kotak = kartu.getBoundingClientRect();
-    const masukLayar = kotak.top < tinggiLayar + 80 && kotak.bottom > -80;
-    if (masukLayar && !kartu.classList.contains('terlihat')) {
-      kartu.classList.add('terlihat');
-      kartu.style.minHeight = Math.round(kotak.height) + 'px'; // cegah kartu "mengempis" saat animasi
+function jadwalkan() {
+  if (menunggu) return;
+  menunggu = true;
+  requestAnimationFrame(perbaruiKepala);
+}
+
+// Kartu yang masuk layar dimunculkan dan dicatat impresinya memakai
+// IntersectionObserver (bukan lagi getBoundingClientRect untuk SEMUA kartu
+// di setiap event gulir, yang membuat halaman macet).
+function buatPengamat() {
+  return new IntersectionObserver((entri) => {
+    const impresiBaru = [];
+    for (const e of entri) {
+      if (!e.isIntersecting) continue;
+      const kartu = e.target;
+      if (!kartu.classList.contains('terlihat')) {
+        kartu.style.minHeight = Math.round(e.boundingClientRect.height) + 'px'; // cegah kartu "mengempis"
+        kartu.classList.add('terlihat');
+      }
+      const id = kartu.dataset.id;
+      if (!sudahTercatat.has(id)) {
+        sudahTercatat.add(id);
+        impresiBaru.push(id);
+      }
+      pengamat.unobserve(kartu);
     }
-    if (masukLayar && !sudahTercatat.has(kartu.dataset.id)) {
-      sudahTercatat.add(kartu.dataset.id);
-      impresiBaru.push(kartu.dataset.id);
-    }
+    if (impresiBaru.length && window.Lacak) window.Lacak.kirim('impression', { produk: impresiBaru });
+  }, { rootMargin: '80px 0px' });
+}
+
+// Dipanggil setelah kartu digambar ulang: daftarkan kartu baru ke pengamat.
+export function periksaGulir() {
+  perbaruiKepala();
+  const kartuKartu = document.querySelectorAll('.kartu');
+  if (!('IntersectionObserver' in window)) {
+    kartuKartu.forEach((k) => k.classList.add('terlihat')); // cadangan: tampilkan semua
+    return;
+  }
+  if (!pengamat) pengamat = buatPengamat();
+  kartuKartu.forEach((k) => {
+    if (sudahDiamati.has(k)) return;
+    sudahDiamati.add(k);
+    pengamat.observe(k);
   });
-
-  if (impresiBaru.length && window.Lacak) window.Lacak.kirim('impression', { produk: impresiBaru });
 }
 
 export function pasangGulir() {
-  window.addEventListener('scroll', periksaGulir);
-  window.addEventListener('resize', periksaGulir);
+  window.addEventListener('scroll', jadwalkan, { passive: true });
+  window.addEventListener('resize', jadwalkan, { passive: true });
 
   // Cegah "pull to refresh" tak sengaja di Android ketika pengguna sedang di puncak halaman.
   let yAwal = 0;
   const utama = $('#utama');
-  utama.addEventListener('touchstart', (e) => { yAwal = e.touches[0].clientY; }, { passive: false });
+  utama.addEventListener('touchstart', (e) => { yAwal = e.touches[0].clientY; }, { passive: true });
   utama.addEventListener('touchmove', (e) => {
     const menarikKeBawah = e.touches[0].clientY > yAwal;
-    if (window.scrollY === 0 && menarikKeBawah) e.preventDefault();
-    periksaGulir();
+    if (window.scrollY === 0 && menarikKeBawah && e.cancelable) e.preventDefault();
   }, { passive: false });
-  utama.addEventListener('wheel', () => { periksaGulir(); }, { passive: false });
+  // Listener "wheel" yang tidak pasif dihapus: hanya memperlambat gulir.
 
   $('#ke-atas').addEventListener('click', () => window.scrollTo({ top: 0 }));
+  perbaruiKepala();
 }
