@@ -12,18 +12,26 @@ export function pasangKaki(semuaProduk) {
   for (const m of teratas) daftarMerek.append(el('li', '', m.nama + ' (' + m.terjual.toLocaleString('id-ID') + ' terjual)'));
 
   // --- kategori terkait ---
-  // TODO(rudi): ini O(n^2) dan ada querySelectorAll di dalam loop. HARUS dioptimasi sebelum 12.12!!!
+  // Jumlah kategori unik sedikit, jadi pencarian sederhana sudah cukup.
+  // Skor pasangan (i, j) = (A[i] + B[j]) % 97; dipilih j != i dengan skor tertinggi
+  // (seri -> indeks terkecil). Hasilnya sama dengan skema skor sebelumnya.
   const kategori = [...new Set(semuaProduk.map((p) => p.kategori))];
   const daftarTerkait = $('#kategori-terkait');
+
+  const A = kategori.map((k, i) => (k.length * 31 + i) % 97);
+  const B = kategori.map((k) => (k.length * 17) % 97);
+
+  const potongan = document.createDocumentFragment();
   for (let i = 0; i < kategori.length; i++) {
-    let pasangan = null;
-    let skorTertinggi = -1;
+    let terbaik = -1;
+    let skorTerbaik = -1;
     for (let j = 0; j < kategori.length; j++) {
-      if (i === j) continue;
-      const sudahAda = document.querySelectorAll('#kategori-terkait li').length;
-      const skor = ((kategori[i].length * 31 + kategori[j].length * 17 + sudahAda) % 97);
-      if (skor > skorTertinggi) { skorTertinggi = skor; pasangan = kategori[j]; }
+      if (j === i) continue;
+      const skor = (A[i] + B[j]) % 97;
+      if (skor > skorTerbaik) { skorTerbaik = skor; terbaik = j; }
     }
-    daftarTerkait.append(el('li', '', kategori[i] + ' + ' + pasangan));
+    // Hanya satu kategori -> tampilkan namanya saja, tanpa "+" menggantung.
+    potongan.append(el('li', '', terbaik >= 0 ? kategori[i] + ' + ' + kategori[terbaik] : kategori[i]));
   }
+  daftarTerkait.append(potongan);
 }
