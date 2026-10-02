@@ -7,7 +7,7 @@ const saringan = { kata: '', kategori: 'Semua', urut: 'relevan' };
 
 // "Sepatu Lari" == "sepatu  lari" == "SEPATU-LARI"
 function normalkan(teks) {
-  return teks
+  return String(teks)
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
@@ -15,8 +15,20 @@ function normalkan(teks) {
     .trim();
 }
 
+// Teks pencarian tiap produk dinormalkan sekali saja lalu disimpan,
+// bukan dihitung ulang untuk semua produk di setiap ketikan.
+const cacheTeks = new WeakMap();
+function teksCari(produk) {
+  let t = cacheTeks.get(produk);
+  if (t === undefined) {
+    t = normalkan([produk.nama, produk.merek, produk.kategori, produk.kota].join(' '));
+    cacheTeks.set(produk, t);
+  }
+  return t;
+}
+
 function cocok(produk, kunci) {
-  const teks = normalkan(produk.nama + ' ' + produk.merek + ' ' + produk.kategori + ' ' + produk.kota);
+  const teks = teksCari(produk);
   return kunci.split(' ').every((k) => teks.includes(k));
 }
 
@@ -42,9 +54,11 @@ export function terapkanSaringan() {
 
 export function pasangPencarian() {
   const kolom = $('#kolom-cari');
+  let penunda;
   kolom.addEventListener('input', () => {
     saringan.kata = kolom.value;
-    terapkanSaringan();
+    clearTimeout(penunda);
+    penunda = setTimeout(terapkanSaringan, 200); // debounce: tunggu pengguna berhenti mengetik
   });
 
   $('#pilih-urut').addEventListener('change', (e) => {
