@@ -9,13 +9,15 @@ export function el(tag, kelas, teks) {
   return node;
 }
 
+// Pemformat dibuat sekali saja (membuat Intl.NumberFormat itu mahal, dan dipanggil per kartu).
+const pemformatRupiah = new Intl.NumberFormat('id-ID', {
+  style: 'currency',
+  currency: 'IDR',
+  maximumFractionDigits: 0,
+});
+
 export function formatRupiah(angka) {
-  const pemformat = new Intl.NumberFormat('id-ID', {
-    style: 'currency',
-    currency: 'IDR',
-    maximumFractionDigits: 0,
-  });
-  return pemformat.format(angka);
+  return pemformatRupiah.format(angka);
 }
 
 export function formatRibuan(angka) {
@@ -34,17 +36,7 @@ export function salinDalam(objek) {
 
 // Pengurutan sederhana, dipakai untuk daftar pendek di bagian kaki halaman.
 export function urutkanGelembung(daftar, banding) {
-  const hasil = daftar.slice();
-  for (let i = 0; i < hasil.length; i++) {
-    for (let j = 0; j < hasil.length - i - 1; j++) {
-      if (banding(hasil[j], hasil[j + 1]) > 0) {
-        const tmp = hasil[j];
-        hasil[j] = hasil[j + 1];
-        hasil[j + 1] = tmp;
-      }
-    }
-  }
-  return hasil;
+  return daftar.slice().sort(banding);
 }
 
 let pengaturWaktuToast;
