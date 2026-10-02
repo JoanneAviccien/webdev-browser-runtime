@@ -30,7 +30,90 @@ dan penyimpangan apa pun dari protokol di TUGAS.md bagian 7.
 
 Ulangi blok berikut untuk tiap temuan. Urutkan berdasarkan dampak, bukan urutan tiket.
 
-### T-01: Penggantian bubble sort dengan built-in sort
+### T-01: Pemrosesan kategori dan query DOM berulang pada `kategori.js`
+
+- Tiket terkait: TK-1078, TK-1081
+  
+- Gejala bagi pengguna: Halaman terasa berat ketika daftar produk dimuat dan
+  pengguna mulai berinteraksi dengan halaman. Pada kondisi baseline, proses
+  JavaScript pada main thread berlangsung cukup lama sehingga dapat menunda
+  kesempatan browser untuk melakukan rendering dan merespons input pengguna.
+  Gejala yang berkaitan dengan gambar yang terlambat muncul juga terlihat pada
+  S0, dengan 1500 permintaan gambar pada 10 detik pertama dan proses selesai
+  sekitar 1,3 menit.
+  
+- Bukti:
+  
+  - Pada trace baseline S0 ditemukan long task sekitar 1200 ms.
+  - Fungsi `pasangKaki` pada `kategori.js` terlihat sebagai bagian dominan
+    dari pemrosesan main thread.
+  - Prediksi awal menunjukkan bahwa operasi DOM berulang di dalam proses
+    perhitungan kategori dapat memperpanjang task.
+  - Setelah perbaikan, jumlah permintaan gambar pada 10 detik pertama turun
+    dari 1500 menjadi 35 dan waktu penyelesaiannya turun dari sekitar 1,3 menit
+    menjadi 3,14 detik.
+  - CLS juga turun dari 0,946 menjadi 0,058 sehingga berada di bawah target
+    0,1.
+  - Namun, angka durasi long task khusus `pasangKaki` setelah perbaikan tidak
+    dicatat secara terpisah dalam tabel hasil, sehingga penurunan dari 1200 ms
+    ke angka tertentu tidak dapat diklaim secara langsung.
+- Akar masalah dan mekanismenya: Pada versi awal, proses `pasangKaki` memiliki
+  pemrosesan kategori yang menggunakan loop bersarang dan operasi DOM berulang.
+  Operasi DOM seperti `querySelectorAll()` yang dilakukan berulang dapat
+  menambah pekerjaan pada main thread dan berpotensi mengganggu rendering
+  opportunity. Ketika JavaScript masih menjalankan task yang panjang, browser
+  memiliki lebih sedikit kesempatan untuk menjalankan style calculation,
+  layout, paint, dan merespons input pengguna.
+  
+  Pada versi perbaikan, pencarian elemen DOM dipindahkan keluar dari proses
+  perhitungan pasangan kategori dan hasil tampilan dikumpulkan menggunakan
+  `DocumentFragment`. Dengan demikian, perubahan DOM tidak dilakukan satu per
+  satu selama proses perhitungan.
+  
+  Perlu dicatat bahwa implementasi akhir masih menggunakan loop bersarang
+  terhadap daftar kategori. Namun jumlah kategori unik jauh lebih kecil dan
+  relatif konstan dibandingkan jumlah produk, sehingga biaya tersebut tidak
+  lagi bergantung langsung pada jumlah seluruh produk seperti pada dugaan awal.
+  
+- Kualitas yang terdampak (ISO/IEC 25010): Sub-karakteristik `performance
+  efficiency`, terutama `time behaviour`, terdampak karena pekerjaan JavaScript
+  yang panjang meningkatkan waktu yang diperlukan browser untuk menyelesaikan
+  task. Hal tersebut juga berkaitan dengan `interaction capability`, terutama
+  `operability`, karena task yang panjang dapat menunda respons terhadap
+  interaksi pengguna.
+  
+- Perbaikan: Mengurangi operasi DOM yang dilakukan berulang pada proses
+  perhitungan kategori. Hasil kategori dikumpulkan terlebih dahulu menggunakan
+  `DocumentFragment`, kemudian dimasukkan ke DOM secara lebih efisien.
+  
+- Trade-off:
+  
+  - Alternatif yang dipertimbangkan:
+    1. Menghapus fitur kategori terkait sepenuhnya, tetapi tidak dipilih karena
+      fitur tersebut merupakan bagian dari kebutuhan aplikasi.
+    2. Menggunakan `requestIdleCallback` untuk menunda pekerjaan DOM, tetapi
+      tidak dipilih karena pekerjaan tetap harus dilakukan dan penundaan saja
+      tidak menghilangkan biaya pemrosesannya.
+    3. Membatasi jumlah kategori yang diproses, tetapi tidak dipilih karena
+      dapat membuat hasil kategori menjadi tidak lengkap.
+  - Harga dari pilihan: Implementasi menjadi sedikit lebih kompleks karena
+    hasil perlu ditampung sementara sebelum dimasukkan ke DOM. Namun jumlah
+    elemen yang ditampung relatif kecil sehingga penggunaan memori tambahan
+    masih terbatas.
+- Hasil: Prediksi bahwa pengurangan pekerjaan DOM akan mengurangi beban main
+  thread didukung oleh hasil keseluruhan S0. Jumlah permintaan gambar pada
+  10 detik pertama turun dari 1500 menjadi 35 dan waktu penyelesaiannya turun
+  dari sekitar 1,3 menit menjadi 3,14 detik. CLS juga turun dari 0,946 menjadi
+  0,058.
+  
+  Namun, prediksi spesifik bahwa long task S0 akan turun dari sekitar 1200 ms
+  menjadi 150 ms tidak dapat diverifikasi dari data akhir karena durasi
+  `pasangKaki` setelah perbaikan tidak dicatat secara terpisah. Oleh karena
+  itu, hasil tersebut menunjukkan perbaikan pada performa keseluruhan S0,
+  tetapi tidak cukup untuk menyatakan bahwa target 150 ms pada fungsi tersebut
+  benar-benar tercapai.
+
+### T-02: Penggantian bubble sort dengan built-in sort
 
 - Tiket terkait: TK-1041
   
