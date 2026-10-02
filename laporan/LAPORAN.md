@@ -191,6 +191,177 @@ Ulangi blok berikut untuk tiap temuan. Urutkan berdasarkan dampak, bukan urutan 
   Yang dapat dibuktikan adalah perbaikan pada respons interaksi secara
   keseluruhan, dengan INP turun dari 2000 ms menjadi 80 ms.
 
+  ### T-03: Pemrosesan voucher yang terlalu lama pada `hitungHargaPromo`
+
+- Tiket terkait: TK-1057
+  
+- Gejala bagi pengguna: Ketika pengguna memasukkan voucher KILAT1212,
+  halaman terlihat seperti membeku dalam waktu yang lama. Progress bar tidak
+  memberikan umpan balik yang cukup cepat dan interaksi lain seperti scrolling
+  terasa tidak responsif.
+  
+- Bukti:
+  
+  - Pada baseline S4 ditemukan long task sekitar 1696 ms.
+  - Trace menunjukkan `terapkanVoucher` dan `hitungHargaPromo` sebagai bagian
+    dari task yang dominan pada main thread.
+  - Fungsi `simulasiCicilan` dan loop pemrosesan produk menyumbang sebagian
+    besar waktu CPU.
+  - Setelah perbaikan, INP S4 turun dari 1696 ms menjadi 496 ms.
+  - Progress dapat diperbarui secara bertahap selama proses berlangsung.
+  - Walaupun terjadi peningkatan, belum tersedia target numerik pada tabel S4
+    untuk menentukan apakah hasil 496 ms sudah memenuhi target.
+- Akar masalah dan mekanismenya: Perhitungan harga voucher melibatkan
+  `simulasiCicilan()` yang melakukan perulangan hingga 24 tenor dan melakukan
+  perhitungan tambahan untuk setiap bulan pada tenor tersebut.
+  
+  Fungsi `terapkanVoucher()` memproses produk dalam batch berisi 50 produk.
+  Setelah satu batch selesai, fungsi `beri_napas()` menggunakan Promise dan
+  `setTimeout(..., 0)` untuk memberikan kesempatan kepada browser melakukan
+  rendering dan memproses input sebelum batch berikutnya.
+  
+  Mekanisme ini penting karena membuat pekerjaan tidak menjadi satu task
+  JavaScript panjang yang berjalan terus-menerus. Browser memperoleh rendering
+  opportunity di antara batch, sehingga progress bar dapat diperbarui dan
+  interaksi pengguna memiliki kesempatan untuk diproses.
+  
+  Perlu diluruskan bahwa solusi akhir pada kode yang diperiksa tidak
+  menggunakan `Promise.all()` seperti yang diprediksi pada PREDIKSI.md.
+  Pemrosesan tetap dilakukan secara sekuensial dalam batch, tetapi diselingi
+  dengan jeda melalui `beri_napas()`.
+  
+- Kualitas yang terdampak (ISO/IEC 25010): `performance efficiency`,
+  khususnya `time behaviour`, terdampak karena perhitungan voucher memerlukan
+  CPU time yang cukup besar. Selain itu, `interaction capability`, khususnya
+  `operability` dan `user engagement`, terdampak karena pengguna mendapatkan
+  feedback yang terlambat ketika aplikasi sedang menghitung voucher.
+  
+- Perbaikan: Memproses produk dalam batch sebanyak 50 produk dan memberikan
+  browser kesempatan untuk menggambar progress serta merespons input setelah
+  setiap batch melalui:
+  
+  `await beri_napas();`
+  
+  Dengan pendekatan tersebut, seluruh perhitungan tetap dilakukan sehingga
+  aturan bisnis voucher dan simulasi cicilan tidak dihapus, tetapi pekerjaan
+  tidak lagi dijalankan sebagai satu task panjang tanpa kesempatan rendering.
+  
+- Trade-off:
+  
+  - Alternatif yang dipertimbangkan:
+    1. Web Worker untuk memindahkan perhitungan dari main thread, tetapi
+      tidak dipilih karena menambah kompleksitas komunikasi dan transfer data.
+    2. `Promise.all()` untuk menjalankan seluruh perhitungan secara paralel,
+      tetapi tidak digunakan pada implementasi akhir karena menjalankan
+      terlalu banyak pekerjaan sekaligus dapat meningkatkan penggunaan memori
+      dan CPU.
+    3. Menghapus simulasi cicilan, tetapi tidak diperbolehkan karena simulasi
+      cicilan merupakan bagian dari aturan bisnis voucher.
+  - Harga dari pilihan: Pemrosesan dalam batch masih menggunakan main thread,
+    sehingga pekerjaan CPU tetap dilakukan oleh thread utama. Selain itu,
+    proses keseluruhan tidak menjadi benar-benar paralel. Keuntungannya adalah
+    pekerjaan dapat diselingi dengan rendering dan input processing tanpa
+    mengubah aturan bisnis.
+- Hasil: Hasil pengukuran menunjukkan INP S4 turun dari 1696 ms menjadi
+  496 ms. Artinya, respons interaksi meningkat secara signifikan, meskipun
+  hasil aktual belum mencapai angka sekitar 300 ms yang diprediksi.
+  
+  Prediksi awal mengusulkan `Promise.all()` sebagai mekanisme paralelisasi,
+  tetapi implementasi akhir menggunakan pendekatan batching dan
+  `setTimeout(0)` melalui `beri_napas()`. Jadi, penurunan waktu bukan
+  disebabkan oleh paralelisasi penuh seperti yang diprediksi, melainkan karena
+  pekerjaan panjang dipecah menjadi beberapa bagian sehingga browser mendapat
+  rendering opportunity di antara batch.
+  
+  Dengan demikian, prediksi arah perbaikannya benar bahwa pemecahan pekerjaan
+  dapat meningkatkan responsivitas, tetapi mekanisme dan angka hasil akhirnya
+  berbeda dari prediksi.
+
+### T-04: Dugaan logging berlebihan pada `gulir.js` ternyata tidak terbukti
+
+- Tiket terkait: TK-1063
+  
+- Gejala bagi pengguna: Pengguna melaporkan scrolling daftar produk terasa
+  patah-patah atau stutter.
+  
+- Bukti:
+  
+  - Baseline S5 menunjukkan 108 frame dengan durasi > 50 ms per 10 detik.
+  - Baseline S6 menunjukkan 106 frame dengan durasi > 50 ms per 10 detik.
+  - PREDIKSI.md menduga penyebabnya adalah `console.log` berlebihan di
+    `gulir.js`.
+  - Setelah kode diperiksa, tidak ditemukan statement `console.log`,
+    `console.debug`, atau logging sinkron lain di dalam `gulir.js`.
+  - `periksaGulir()` justru menggunakan `IntersectionObserver` untuk
+    mengamati kartu yang masuk viewport.
+  - Pencatatan impresi dilakukan melalui `window.Lacak.kirim()` hanya ketika
+    terdapat impresi baru.
+  - Hasil akhir S5 menunjukkan frame > 50 ms turun dari 108 menjadi 0.
+  - Hasil akhir S6 menunjukkan frame > 50 ms turun dari 106 menjadi 1.
+- Akar masalah dan mekanismenya: Dugaan awal mengenai logging tidak sesuai
+  dengan implementasi kode yang ditemukan. Tidak terdapat operasi
+  `console.log` berlebihan yang dapat dihapus.
+  
+  Implementasi `gulir.js` menggunakan `requestAnimationFrame()` untuk
+  menjadwalkan pembaruan header dan progress bar paling banyak sekali per
+  frame. Selain itu, `IntersectionObserver` digunakan untuk memproses kartu
+  yang masuk viewport, sehingga browser tidak perlu menjalankan pemeriksaan
+  posisi seluruh kartu pada setiap event scroll.
+  
+  Dengan demikian, mekanisme yang relevan terhadap performa scrolling adalah
+  pembatasan pekerjaan per frame dan penggunaan `IntersectionObserver`, bukan
+  penghapusan `console.log`.
+  
+- Kualitas yang terdampak (ISO/IEC 25010): `performance efficiency`,
+  terutama `time behaviour`, berhubungan langsung dengan kelancaran frame
+  rendering. Dari sisi `interaction capability`, scrolling yang lebih lancar
+  mendukung `operability` dan `user engagement` karena pengguna dapat
+  menjelajahi daftar produk tanpa gangguan visual yang signifikan.
+  
+- Perbaikan: Tidak ada perbaikan yang dilakukan terhadap `console.log` karena
+  statement tersebut memang tidak ditemukan.
+  
+  Pendekatan yang sudah terdapat pada `gulir.js` dan relevan terhadap masalah
+  scrolling adalah:
+  
+  1. menggunakan `requestAnimationFrame()` untuk pekerjaan visual yang
+    berkaitan dengan scroll;
+  2. menggunakan `IntersectionObserver` untuk mendeteksi kartu yang masuk
+    viewport;
+  3. menggunakan `Set` dan `WeakSet` agar kartu dan impresi yang sama tidak
+    diproses berulang;
+  4. mengirim data impresi melalui `window.Lacak.kirim()` hanya ketika
+    diperlukan.
+- Trade-off:
+  
+  - Alternatif yang dipertimbangkan:
+    1. Menghapus `console.log`, tetapi tidak dilakukan karena tidak terdapat
+      logging tersebut.
+    2. Mengubah `console.log` menjadi `console.debug`, tetapi tidak relevan
+      karena sumber masalah yang diprediksi tidak ada.
+    3. Menggunakan `requestAnimationFrame()` untuk membatasi pekerjaan scroll,
+      yang memang sesuai dengan kebutuhan rendering dan sudah diterapkan.
+  - Harga dari pendekatan ini: `IntersectionObserver` dan struktur tracking
+    tambahan membuat implementasi sedikit lebih kompleks. Selain itu,
+    browser lama yang tidak mendukung `IntersectionObserver` memerlukan
+    fallback yang menampilkan seluruh kartu.
+- Hasil: Prediksi awal terbukti tidak tepat. Tidak ada `console.log` berlebihan
+  pada `gulir.js`, sehingga tidak ada operasi logging sinkron yang dapat
+  dihapus.
+  
+  Meskipun demikian, hasil pengukuran akhir menunjukkan perbaikan scrolling
+  yang sangat besar. Frame > 50 ms pada S5 turun dari 108 menjadi 0 dan pada
+  S6 turun dari 106 menjadi 1. Kedua hasil tersebut memenuhi target <= 2.
+  
+  Namun, penurunan tersebut tidak boleh diklaim sebagai akibat penghapusan
+  `console.log`, karena operasi tersebut tidak pernah ada. Hasil ini lebih
+  tepat dikaitkan dengan perubahan performa lain yang dilakukan pada aplikasi,
+  terutama optimasi pekerjaan main thread, pemrosesan DOM, dan mekanisme
+  rendering/observasi elemen.
+  
+  Temuan ini menunjukkan bahwa dugaan penyebab dari catatan awal perlu
+  diverifikasi melalui source code dan trace sebelum perbaikan dilakukan.
+
 ## 5. Dugaan yang ternyata keliru
 
 Dugaan dari catatan serah terima, dari tiket, atau dari tim Anda sendiri yang terbantah oleh
