@@ -9,7 +9,7 @@ bagian "sebelum" setelah hasilnya diketahui; bila prediksi meleset, jelaskan di 
 ## P-01: Loop berantai dengan querySelectorAll dalam kategori.js
 
 **Tiket terkait:** TK-1078, TK-1081
-**Tanggal dan hash commit entri ini:** 2026-10-01, 1c2bfdd
+**Tanggal dan hash commit entri ini:** 4c82463f78a0dbd2ce7a4aaa4b8bbfe67d7834a9
 
 ### Sebelum perbaikan
 
@@ -47,7 +47,7 @@ bagian "sebelum" setelah hasilnya diketahui; bila prediksi meleset, jelaskan di 
 ## P-02: Bubble sort dalam util.js
 
 **Tiket terkait:** TK-1041 (indirektly - memperlambat rendering kategori)
-**Tanggal dan hash commit entri ini:** 2026-10-01, 1c2bfdd
+**Tanggal dan hash commit entri ini:** 2ba3909c88e556b5b343623d9c3fcb07ee0bffdb
 
 ### Sebelum perbaikan
 
@@ -85,7 +85,7 @@ bagian "sebelum" setelah hasilnya diketahui; bila prediksi meleset, jelaskan di 
 ## P-03: Pemrosesan sekuensial dalam hitungHargaPromo
 
 **Tiket terkait:** TK-1057
-**Tanggal dan hash commit entri ini:** 2026-10-01, 1c2bfdd
+**Tanggal dan hash commit entri ini:** fc58420210bb8a17c01af56725ee63dc494c3c4b
 
 ### Sebelum perbaikan
 
@@ -123,7 +123,7 @@ bagian "sebelum" setelah hasilnya diketahui; bila prediksi meleset, jelaskan di 
 ## P-04: Scroll janky/stutter karena logging eksesif dalam gulir.js
 
 **Tiket terkait:** TK-1063
-**Tanggal dan hash commit entri ini:** 2026-10-01, 1c2bfdd
+**Tanggal dan hash commit entri ini:**  -
 
 ### Sebelum perbaikan
 
@@ -150,13 +150,7 @@ bagian "sebelum" setelah hasilnya diketahui; bila prediksi meleset, jelaskan di 
   2. Menggunakan requestAnimationFrame untuk membatasi frekuensi logging - tidak dipilih karena masih menyinkronkan dengan frame rate dan bisa menambah latency.
   3. Mengalihkan logging ke web worker - tidak dipilih karena kompleksitas interaksi dan overhead postMessage yang signifikan untuk operasi sederhana.
 
-### Sesudah perbaikan
+Sesudah perbaikan
 
-
-
-- **Hash commit perbaikan:** -
-- **Hasil ukur (median 3 kali):** [akan diisi setelah pengukuran]
-- **Prediksi vs kenyataan:** [akan diisi setelah pengukuran]
-- **Efek samping yang muncul:** [akan diisi setelah pengukuran]
-
----
+**Prediksi yang Tidak Tepat:**
+Prediksi ini tidak tepat karena setelah dilakukan investigasi, kelompok kami menemukan bahwa gulir.js tidak mengandung pernyataan console.log berlebihan yang menyebabkan scroll jank. File gulir.js yang kami periksa tidak memiliki pernyataan console.log sama sekali file tersebut menggunakan mekanisme pelacakan yang efisien. Oleh karena itu, prediksi perbaikan dari penghapusan operasi logging sinkron tidak berlaku karena memang tidak ada logging semacam itu untuk dihapus.
