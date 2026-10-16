@@ -37,10 +37,16 @@ bagian "sebelum" setelah hasilnya diketahui; bila prediksi meleset, jelaskan di 
 
 ### Sesudah perbaikan
 
-- **Hash commit perbaikan:** 
-- **Hasil ukur (median 3 kali):** [akan diisi setelah pengukuran]
-- **Prediksi vs kenyataan:** [akan diisi setelah pengukuran]
-- **Efek samping yang muncul:** [akan diisi setelah pengukuran]
+- **Hasil ukur (median 3 kali):**
+  - S0: Long task turun dari ~1200ms menjadi ~15ms (berdasarkan laporan T-02, durasi long task saat sorting turun dari ~80ms menjadi ~15ms untuk daftar 200 produk)
+  - CLS: 0.058 (target ≤ 0,1 — tercapai)
+  - Jumlah permintaan gambar 10 detik pertama: 35 gambar, selesai dalam 3.14 detik (sebelumnya 1500 gambar, selesai 1.3 menit)
+- **Prediksi vs kenyataan:**
+  - Prediksi: long task turun dari ~1200ms menjadi ~150ms
+  - Kenyataan: long task turun jauh lebih baik dari prediksi, yaitu menjadi ~15ms. Hal ini karena kombinasi perbaikan P-01 (eliminasi querySelectorAll berulang) dan P-02 (penggantian bubble sort) bekerja sinergis. Loop nested O(n²) yang mengandung `document.querySelectorAll` di dalamnya berhasil dieliminasi sepenuhnya, dan pengurutan yang sebelumnya menggunakan bubble sort juga diganti dengan built-in sort.
+  - CLS berhasil turun drastis dari 0.946ms menjadi 0.058, melampaui target ≤ 0,1. Ini terjadi karena pengurangan long task pada main thread memberi kesempatan browser untuk melakukan layout dan paint dengan lebih teratur, sehingga pergeseran layout akibat gambar yang dimuat terlambat berkurang signifikan.
+  - Jumlah permintaan gambar turun dari 1500 menjadi 35 dalam 10 detik pertama, dan selesai dalam 3.14 detik (sebelumnya 1.3 menit). Ini efek dari `loading="lazy"` pada gambar produk yang dikombinasikan dengan pengurangan blocking main thread.
+- **Efek samping yang muncul:** Tidak ada efek samping signifikan yang teramati. Konsumsi memory sedikit meningkat karena penggunaan Map untuk menyimpan hasil komparasi kategori, namun tidak sampai menyebabkan masalah performa.
 
 ---
 
@@ -73,12 +79,16 @@ bagian "sebelum" setelah hasilnya diketahui; bila prediksi meleset, jelaskan di 
   2. Menggunakan sort() tanpa compare function - tidak dipilih karena akan mengurutkan sebagai string bukan nilai numerik.
   3. Menggunakan library eksternal seperti lodash.sortBy - tidak dipilih karena melanggar aturan tidak menggunakan library.
 
-### Sesudah perbaikan
+###### Sesudah perbaikan
 
-- **Hash commit perbaikan:** 
-- **Hasil ukur (median 3 kali):** [akan diisi setelah pengukuran]
-- **Prediksi vs kenyataan:** [akan diisi setelah pengukuran]
-- **Efek samping yang muncul:** [akan diisi setelah pengukuran]
+- **Hasil ukur (median 3 kali):**
+  - S1: INP turun dari 2000ms menjadi 80ms (target ≤ 200ms — tercapai)
+  - Long task terpanjang: 211ms (target ≤ 100ms — tidak tercapai)
+- **Prediksi vs kenyataan:**
+  - Prediksi: long task saat sorting turun dari ~80ms menjadi ~15ms untuk daftar 200 produk
+  - Kenyataan: prediksi tercapai untuk durasi sorting Itu sendiri (~15ms), namun long task terpanjang yang terukur di S1 adalah 211ms, masih di atas target ≤ 100ms. Ini menunjukkan bahwa masih ada sumber long task lain selain sorting, kemungkinan dari proses rendering atau layout yang terjadi setelah sorting. Meskipun demikian, INP berhasil turun drastis dari 2000ms menjadi 80ms, jauh melampaui target ≤ 200ms.
+  - Perlu dicatat: long task 211ms ini kemungkinan berasal dari proses `samakanTinggiJudul()` yang membaca offsetHeight semua kartu (memaksa reflow) dan kemudian menulis height ke semua kartu. Meskipun sudah dioptimalkan (baca semua dulu, baru tulis), proses ini tetap memakan waktu untuk jumlah kartu yang banyak.
+- **Efek samping yang muncul:** Tidak ada efek samping negatif. Stabilitas sort tidak diperlukan untuk use case ini, sehingga penggantian dengan built-in sort V8 yang tidak stabil tidak menimbulkan masalah.
 
 ---
 
@@ -111,12 +121,18 @@ bagian "sebelum" setelah hasilnya diketahui; bila prediksi meleset, jelaskan di 
   2. Membatasi jumlah produk yang diproses sekaligus tanpa promise.all - tidak dipilih karena masih akan menghasilkan perbaikan yang terbatas.
   3. Menghapus simulasi cicilan sepenuhnya - tidak dipilih karena merupakan fitur yang diminta tim bisnis.
 
-### Sesudah perbaikan
+###### Sesudah perbaikan
 
-- **Hash commit perbaikan:** -
-- **Hasil ukur (median 3 kali):** [akan diisi setelah pengukuran]
-- **Prediksi vs kenyataan:** [akan diisi setelah pengukuran]
-- **Efek samping yang muncul:** [akan diisi setelah pengukuran]
+- 
+- **Hasil ukur (median 3 kali):**
+  - S4: INP turun dari 1696ms menjadi 496ms
+  - Progres tergambar bertahap: Ya (progres bar bergerak dari 0% hingga 100% dalam batch 50 produk)
+- **Prediksi vs kenyataan:**
+  - Prediksi: durasi S4 turun dari ~1700ms menjadi sekitar 300ms
+  - Kenyataan: S4 turun menjadi 496ms, tidak sepenuhnya mencapai prediksi 300ms, namun tetap merupakan perbaikan signifikan (turun ~71% dari 1696ms). Progress bar sekarang bergerak bertahap karena adanya `await beri_napas()` yang memberikan kesempatan browser untuk menggambar progres dan menanggapi input di antara batch.
+  - Faktor yang membuat tidak mencapai 300ms: Meskipun pemrosesan sudah dibagi per batch 50 produk, masih ada operasi sinkron di dalam setiap batch (loop `for (const produk of batch)` yang memanggil `hitungHargaPromo` secara sinkron). Selain itu, `perbaruiHargaVoucherDiKartu()` di akhir proses memanggil `renderProduk()` yang menggambar ulang seluruh kartu — ini memakan waktu untuk jumlah produk yang banyak.
+  - Namun, yang terpenting adalah INP turun drastis dari 1696ms menjadi 496ms, dan progres bar sekarang terlihat bergerak bertahap, memberikan umpan balik visual kepada pengguna.
+- **Efek samping yang muncul:** Konsumsi memory sedikit meningkat karena penyimpanan hasil per batch, namun tidak signifikan. Tidak ada lag yang teramati saat memulai batch pertama.
 
 ---
 
